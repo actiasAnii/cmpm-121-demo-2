@@ -40,8 +40,9 @@ app.appendChild(canvas);
 // drawing context
 const ctx = canvas.getContext("2d");
 
-// store strokes as array of arrays of points {x, y}
-let strokes: { x: number; y: number }[][] = [];
+// store strokes drawn as array of arrays of points {x, y}
+let strokesDrawn: { x: number; y: number }[][] = [];
+let redoStack: { x: number; y: number }[][] = [];
 let currentStroke: { x: number; y: number }[] = [];
 
 // track whether currently drawing
@@ -51,7 +52,7 @@ let drawing = false;
 function redrawCanvas() {
   ctx!.clearRect(0, 0, canvas.width, canvas.height); // clear canvas
   ctx!.beginPath();
-  for (const stroke of strokes) {
+  for (const stroke of strokesDrawn) {
     if (stroke.length === 0) continue; // skip empty strokes
     ctx!.moveTo(stroke[0].x, stroke[0].y);
     for (const point of stroke) {
@@ -61,16 +62,17 @@ function redrawCanvas() {
   }
 }
 
+//////// handle mouse events
+
 // start drawing state on mousedown
 canvas.addEventListener("mousedown", (e) => {
   drawing = true;
   currentStroke = []; // start new stroke
   const point = { x: e.offsetX, y: e.offsetY };
   currentStroke.push(point); // add start point
-  strokes.push(currentStroke); // add stroke to array
-
-  // dispatch drawing changed event
-  canvas.dispatchEvent(new Event("drawing-changed"));
+  strokesDrawn.push(currentStroke); // add stroke to array
+  redoStack = []; // clear to separate strokes
+  canvas.dispatchEvent(new Event("drawing-changed")); // trigger redraw
 });
 
 // draw on mousemove if the mouse is pressed
@@ -78,9 +80,7 @@ canvas.addEventListener("mousemove", (e) => {
   if (!drawing) return;
   const point = { x: e.offsetX, y: e.offsetY };
   currentStroke.push(point); // add new point to current stroke
-
-  // dispatch drawing changed event
-  canvas.dispatchEvent(new Event("drawing-changed"));
+  canvas.dispatchEvent(new Event("drawing-changed")); // trigger redraw
 });
 
 // stop drawing on mouseup
@@ -94,19 +94,65 @@ canvas.addEventListener("drawing-changed", () => {
   redrawCanvas();
 });
 
-// might make a container or reposition later
-// add clear button
-const clearButton = createElement("button", {
-  textContent: "clear",
+//////// buttons
+
+// make button container
+const buttonContainer = createElement("div", {
   styles: {
     marginTop: "10px",
-    padding: "10px",
-    fontSize: "16px",
+    display: "flex",
+    justifyContent: "center",
+    gap: "10px",
+  },
+});
+app.appendChild(buttonContainer);
+
+// add clear button
+const clearButton = createElement("button", {
+  textContent: "Clear",
+  styles: {
+    marginTop: "10px",
   },
 });
 // clear canvas when button is pressed
 clearButton.addEventListener("click", () => {
-  strokes = [];
+  //clear everything
+  strokesDrawn = [];
+  redoStack = [];
   ctx!.clearRect(0, 0, canvas.width, canvas.height);
 });
-app.appendChild(clearButton);
+buttonContainer.appendChild(clearButton);
+
+// add undo button
+const undoButton = createElement("button", {
+  textContent: "Undo",
+  styles: {
+    marginTop: "10px",
+  },
+});
+buttonContainer.appendChild(undoButton);
+// undo most recent stroke
+undoButton.addEventListener("click", () => {
+  if (strokesDrawn.length > 0) {
+    const lastStroke = strokesDrawn.pop()!; // remove the last stroke from strokes
+    redoStack.push(lastStroke); // push to the redo stack
+    canvas.dispatchEvent(new Event("drawing-changed")); // trigger redraw
+  }
+});
+
+// add redo button
+const redoButton = createElement("button", {
+  textContent: "Redo",
+  styles: {
+    marginTop: "10px",
+  },
+});
+buttonContainer.appendChild(redoButton);
+// redo most recently undone stroke
+redoButton.addEventListener("click", () => {
+  if (redoStack.length > 0) {
+    const redoStroke = redoStack.pop()!; // pop last stroke from redo stack
+    strokesDrawn.push(redoStroke); // add back to strokes drawn array
+    canvas.dispatchEvent(new Event("drawing-changed")); // trigger redraw
+  }
+});
