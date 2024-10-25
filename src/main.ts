@@ -2,60 +2,30 @@ import "./style.css";
 
 const APP_NAME = "Sketchpad Demo!";
 const app = document.querySelector<HTMLDivElement>("#app")!;
-
 document.title = APP_NAME;
 
-// drawable object interface
+// interface for drawable things
 interface Drawable {
   drag(x: number, y: number): void;
   display(ctx: CanvasRenderingContext2D): void;
   lineWidth: number;
 }
 
-// tool preview interface
+// interface for tool preview behavior
 interface ToolPreview {
-  draw(ctx: CanvasRenderingContext2D, x: number, y: number): void;
+  drawPreview(ctx: CanvasRenderingContext2D, x: number, y: number): void;
 }
 
-let currentMarkerStyle: "thin" | "thick" = "thin"; // default to thin
-
-function createMarkerLine(startX: number, startY: number): Drawable {
-  const points: { x: number; y: number }[] = [{ x: startX, y: startY }];
-
-  const lineWidth = currentMarkerStyle === "thin" ? 1 : 5;
-
-  return {
-    lineWidth,
-    drag(x: number, y: number) {
-      points.push({ x, y });
-    },
-    display(ctx: CanvasRenderingContext2D) {
-      if (points.length === 0) return;
-
-      ctx.lineWidth = this.lineWidth;
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for (const point of points) {
-        ctx.lineTo(point.x, point.y);
-      }
-      ctx.stroke();
-      ctx.stroke(); // double draw bc i wanted the opacity loss to be less intense
-    },
-  };
-}
-
-function createToolPreview(): ToolPreview {
-  return {
-    draw(ctx: CanvasRenderingContext2D, x: number, y: number) {
-      const lineWidth = currentMarkerStyle === "thin" ? 1 : 3;
-      ctx.lineWidth = lineWidth;
-      ctx.beginPath();
-      ctx.arc(x, y, lineWidth * 2, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.5)";
-      ctx.stroke();
-    },
-  };
-}
+// global variables
+let currentMarkerStyle: "thin" | "thick" = "thin";
+let currentSticker: string | null = null;
+let currentTool: ToolPreview | null = null;
+let strokesDrawn: Drawable[] = [];
+let redoStack: Drawable[] = [];
+let currentStroke: Drawable | null = null;
+let drawing = false;
+let previewX: number | null = null;
+let previewY: number | null = null;
 
 // helper function to create DOM elements
 function createElement<K extends keyof HTMLElementTagNameMap>(
@@ -73,12 +43,94 @@ function createElement<K extends keyof HTMLElementTagNameMap>(
   return element;
 }
 
-const title = createElement("h1", {
-  textContent: "My Sketchpad App",
-});
+// helper function to redraw all drawables onto canvas
+function redrawCanvas(
+  ctx: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement
+) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  for (const drawable of strokesDrawn) {
+    drawable.display(ctx);
+  }
+}
+
+function createMarkerLine(startX: number, startY: number): Drawable {
+  const points: { x: number; y: number }[] = [{ x: startX, y: startY }];
+  const lineWidth = currentMarkerStyle === "thin" ? 1 : 5;
+
+  return {
+    lineWidth,
+    drag(x: number, y: number) {
+      points.push({ x, y });
+    },
+    display(ctx: CanvasRenderingContext2D) {
+      if (points.length === 0) return;
+      ctx.lineWidth = this.lineWidth;
+      ctx.globalAlpha = 1;
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (const point of points) {
+        ctx.lineTo(point.x, point.y);
+      }
+      ctx.stroke();
+      ctx.stroke();
+    },
+  };
+}
+
+function StickerPreview(sticker: string): ToolPreview {
+  return {
+    drawPreview(ctx: CanvasRenderingContext2D, x: number, y: number) {
+      ctx.font = "30px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.globalAlpha = 0.5;
+      ctx.fillText(sticker, x, y);
+    },
+  };
+}
+
+function markerPreview(): ToolPreview {
+  return {
+    drawPreview(ctx: CanvasRenderingContext2D, x: number, y: number) {
+      const lineWidth = currentMarkerStyle === "thin" ? 1 : 3; // Adjust based on current marker style
+      ctx.lineWidth = lineWidth;
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.5)"; // Semi-transparent preview
+      ctx.beginPath();
+      ctx.arc(x, y, lineWidth * 2, 0, Math.PI * 2); // Draw circle preview
+      ctx.stroke();
+    },
+  };
+}
+
+function PlaceSticker(
+  sticker: string,
+  startX: number,
+  startY: number
+): Drawable {
+  let x = startX;
+  let y = startY;
+
+  return {
+    lineWidth: 0,
+    drag(newX: number, newY: number) {
+      x = newX;
+      y = newY;
+    },
+    display(ctx: CanvasRenderingContext2D) {
+      ctx.font = "30px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.globalAlpha = 1;
+      ctx.fillText(sticker, x, y);
+    },
+  };
+}
+
+//// DOM elements
+const title = createElement("h1", { textContent: "My Sketchpad App" });
 app.appendChild(title);
 
-// create container for marker select buttons
 const markerContainer = createElement("div", {
   styles: {
     marginBottom: "10px",
@@ -89,14 +141,12 @@ const markerContainer = createElement("div", {
 });
 app.appendChild(markerContainer);
 
-// create canvas
 const canvas = createElement("canvas", {});
 canvas.height = 256;
 canvas.width = 256;
 canvas.id = "myCanvas";
 app.appendChild(canvas);
 
-// create general button container
 const buttonContainer = createElement("div", {
   styles: {
     marginTop: "10px",
@@ -109,58 +159,115 @@ app.appendChild(buttonContainer);
 
 const ctx = canvas.getContext("2d");
 
-// stroke storage
-let strokesDrawn: Drawable[] = [];
-let redoStack: Drawable[] = [];
-let currentStroke: Drawable | null = null;
-let drawing = false;
+//// marker tool buttons
+const thinButton = createElement("button", { textContent: "Thin Marker" });
+thinButton.classList.add("selectedTool");
+markerContainer.appendChild(thinButton);
 
-// hold tool preview
-let toolPreview: ToolPreview | null = null;
-let previewX: number | null = null;
-let previewY: number | null = null; // Store the last mouse position for preview
+thinButton.addEventListener("click", () => {
+  currentMarkerStyle = "thin";
+  thinButton.classList.add("selectedTool");
+  thickButton.classList.remove("selectedTool");
+});
 
-function redrawCanvas() {
-  ctx!.clearRect(0, 0, canvas.width, canvas.height);
-  for (const drawable of strokesDrawn) {
-    drawable.display(ctx!);
-  }
-}
+const thickButton = createElement("button", { textContent: "Thick Marker" });
+markerContainer.appendChild(thickButton);
 
-///// mouse event listeners
+thickButton.addEventListener("click", () => {
+  currentMarkerStyle = "thick";
+  thickButton.classList.add("selectedTool");
+  thinButton.classList.remove("selectedTool");
+});
+currentTool = markerPreview();
 
-canvas.addEventListener("mousedown", (e) => {
-  drawing = true;
-  const point = { x: e.offsetX, y: e.offsetY };
-  currentStroke = createMarkerLine(point.x, point.y);
-  strokesDrawn.push(currentStroke);
+//// sticker buttons
+const stickers = ["❤️", "✨", "🌷"];
+stickers.forEach((sticker) => {
+  const button = createElement("button", {
+    textContent: sticker,
+    styles: { fontSize: "24px" },
+  });
+
+  button.addEventListener("click", () => {
+    currentSticker = sticker;
+    currentTool = StickerPreview(sticker);
+  });
+
+  markerContainer.appendChild(button);
+});
+
+//// control buttons
+const clearButton = createElement("button", {
+  textContent: "Clear",
+  styles: { marginTop: "10px" },
+});
+buttonContainer.appendChild(clearButton);
+
+clearButton.addEventListener("click", () => {
+  strokesDrawn = [];
   redoStack = [];
-  canvas.dispatchEvent(new Event("drawing-changed"));
+  ctx!.clearRect(0, 0, canvas.width, canvas.height);
+});
+
+const undoButton = createElement("button", {
+  textContent: "Undo",
+  styles: { marginTop: "10px" },
+});
+buttonContainer.appendChild(undoButton);
+
+undoButton.addEventListener("click", () => {
+  if (strokesDrawn.length > 0) {
+    const lastStroke = strokesDrawn.pop()!;
+    redoStack.push(lastStroke);
+    canvas.dispatchEvent(new Event("drawing-changed"));
+  }
+});
+
+const redoButton = createElement("button", {
+  textContent: "Redo",
+  styles: { marginTop: "10px" },
+});
+buttonContainer.appendChild(redoButton);
+
+redoButton.addEventListener("click", () => {
+  if (redoStack.length > 0) {
+    const redoStroke = redoStack.pop()!;
+    strokesDrawn.push(redoStroke);
+    canvas.dispatchEvent(new Event("drawing-changed"));
+  }
+});
+
+//// mouse event listeners
+canvas.addEventListener("mousedown", (e) => {
+  if (currentSticker) {
+    const newSticker = PlaceSticker(currentSticker, e.offsetX, e.offsetY);
+    strokesDrawn.push(newSticker);
+    currentSticker = null;
+    currentTool = null;
+    canvas.dispatchEvent(new Event("drawing-changed"));
+  } else {
+    drawing = true;
+    const point = { x: e.offsetX, y: e.offsetY };
+    currentStroke = createMarkerLine(point.x, point.y);
+    strokesDrawn.push(currentStroke);
+    redoStack = [];
+    canvas.dispatchEvent(new Event("drawing-changed"));
+  }
 });
 
 canvas.addEventListener("mousemove", (e) => {
-  if (!drawing) {
-    // last known position
+  if (!drawing && currentTool) {
     previewX = e.offsetX;
     previewY = e.offsetY;
-
-    // only tool preview when not drawing
-    if (!toolPreview) {
-      toolPreview = createToolPreview();
-    }
     ctx!.clearRect(0, 0, canvas.width, canvas.height);
-    for (const stroke of strokesDrawn) {
-      stroke.display(ctx!);
-    }
+    redrawCanvas(ctx!, canvas);
     if (previewX !== null && previewY !== null) {
-      toolPreview.draw(ctx!, previewX, previewY);
+      currentTool.drawPreview(ctx!, previewX, previewY);
     }
-  } else if (currentStroke) {
+  } else if (drawing && currentStroke) {
     currentStroke.drag(e.offsetX, e.offsetY);
     ctx!.clearRect(0, 0, canvas.width, canvas.height);
-    for (const stroke of strokesDrawn) {
-      stroke.display(ctx!);
-    }
+    redrawCanvas(ctx!, canvas);
     currentStroke.display(ctx!);
   }
 });
@@ -170,74 +277,6 @@ canvas.addEventListener("mouseup", () => {
   currentStroke = null;
 });
 
-// redraw canvas whenever there is change
 canvas.addEventListener("drawing-changed", () => {
-  redrawCanvas();
-});
-
-//// buttons
-const thinButton = createElement("button", {
-  textContent: "Thin Marker",
-});
-thinButton.classList.add("selectedTool");
-
-thinButton.addEventListener("click", () => {
-  currentMarkerStyle = "thin";
-  thinButton.classList.add("selectedTool");
-  thickButton.classList.remove("selectedTool");
-});
-markerContainer.appendChild(thinButton);
-
-const thickButton = createElement("button", {
-  textContent: "Thick Marker",
-});
-
-thickButton.addEventListener("click", () => {
-  currentMarkerStyle = "thick";
-  thickButton.classList.add("selectedTool");
-  thinButton.classList.remove("selectedTool");
-});
-markerContainer.appendChild(thickButton);
-
-const clearButton = createElement("button", {
-  textContent: "Clear",
-  styles: {
-    marginTop: "10px",
-  },
-});
-clearButton.addEventListener("click", () => {
-  strokesDrawn = [];
-  redoStack = [];
-  ctx!.clearRect(0, 0, canvas.width, canvas.height); // clear canvas
-});
-buttonContainer.appendChild(clearButton);
-
-const undoButton = createElement("button", {
-  textContent: "Undo",
-  styles: {
-    marginTop: "10px",
-  },
-});
-buttonContainer.appendChild(undoButton);
-undoButton.addEventListener("click", () => {
-  if (strokesDrawn.length > 0) {
-    const lastStroke = strokesDrawn.pop()!;
-    redoStack.push(lastStroke); // push to redo stack
-    canvas.dispatchEvent(new Event("drawing-changed"));
-  }
-});
-
-const redoButton = createElement("button", {
-  textContent: "Redo",
-  styles: {
-    marginTop: "10px",
-  },
-});
-buttonContainer.appendChild(redoButton);
-redoButton.addEventListener("click", () => {
-  if (redoStack.length > 0) {
-    const redoStroke = redoStack.pop()!;
-    strokesDrawn.push(redoStroke);
-    canvas.dispatchEvent(new Event("drawing-changed"));
-  }
+  redrawCanvas(ctx!, canvas);
 });
