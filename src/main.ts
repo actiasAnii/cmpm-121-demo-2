@@ -12,6 +12,11 @@ interface Drawable {
   lineWidth: number;
 }
 
+// tool preview interface
+interface ToolPreview {
+  draw(ctx: CanvasRenderingContext2D, x: number, y: number): void;
+}
+
 let currentMarkerStyle: "thin" | "thick" = "thin"; // default to thin
 
 function createMarkerLine(startX: number, startY: number): Drawable {
@@ -33,6 +38,20 @@ function createMarkerLine(startX: number, startY: number): Drawable {
       for (const point of points) {
         ctx.lineTo(point.x, point.y);
       }
+      ctx.stroke();
+      ctx.stroke(); // double draw bc i wanted the opacity loss to be less intense
+    },
+  };
+}
+
+function createToolPreview(): ToolPreview {
+  return {
+    draw(ctx: CanvasRenderingContext2D, x: number, y: number) {
+      const lineWidth = currentMarkerStyle === "thin" ? 1 : 3;
+      ctx.lineWidth = lineWidth;
+      ctx.beginPath();
+      ctx.arc(x, y, lineWidth * 2, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.5)";
       ctx.stroke();
     },
   };
@@ -96,6 +115,11 @@ let redoStack: Drawable[] = [];
 let currentStroke: Drawable | null = null;
 let drawing = false;
 
+// hold tool preview
+let toolPreview: ToolPreview | null = null;
+let previewX: number | null = null;
+let previewY: number | null = null; // Store the last mouse position for preview
+
 function redrawCanvas() {
   ctx!.clearRect(0, 0, canvas.width, canvas.height);
   for (const drawable of strokesDrawn) {
@@ -103,7 +127,7 @@ function redrawCanvas() {
   }
 }
 
-///// Mouse event listeners
+///// mouse event listeners
 
 canvas.addEventListener("mousedown", (e) => {
   drawing = true;
@@ -115,9 +139,30 @@ canvas.addEventListener("mousedown", (e) => {
 });
 
 canvas.addEventListener("mousemove", (e) => {
-  if (!drawing || !currentStroke) return;
-  currentStroke.drag(e.offsetX, e.offsetY);
-  canvas.dispatchEvent(new Event("drawing-changed"));
+  if (!drawing) {
+    // last known position
+    previewX = e.offsetX;
+    previewY = e.offsetY;
+
+    // only tool preview when not drawing
+    if (!toolPreview) {
+      toolPreview = createToolPreview();
+    }
+    ctx!.clearRect(0, 0, canvas.width, canvas.height);
+    for (const stroke of strokesDrawn) {
+      stroke.display(ctx!);
+    }
+    if (previewX !== null && previewY !== null) {
+      toolPreview.draw(ctx!, previewX, previewY);
+    }
+  } else if (currentStroke) {
+    currentStroke.drag(e.offsetX, e.offsetY);
+    ctx!.clearRect(0, 0, canvas.width, canvas.height);
+    for (const stroke of strokesDrawn) {
+      stroke.display(ctx!);
+    }
+    currentStroke.display(ctx!);
+  }
 });
 
 canvas.addEventListener("mouseup", () => {
