@@ -29,74 +29,85 @@ app.appendChild(title);
 
 // create and append canvas element
 const canvas = createElement("canvas", {});
-// had to change how height and width were assigned to fix drawing resolution
 canvas.height = 256;
 canvas.width = 256;
-// add an ID for styling in CSS and append
 canvas.id = "myCanvas";
 app.appendChild(canvas);
 
-// heavily referenced https://quant-paint.glitch.me/paint0.html below
-// drawing context
-const ctx = canvas.getContext("2d");
+const ctx = canvas.getContext("2d")!;
 
-// store strokes drawn as array of arrays of points {x, y}
-let strokesDrawn: { x: number; y: number }[][] = [];
-let redoStack: { x: number; y: number }[][] = [];
-let currentStroke: { x: number; y: number }[] = [];
+// drawable object interface
+interface Drawable {
+  display(ctx: CanvasRenderingContext2D): void;
+  drag(x: number, y: number): void;
+}
 
-// track whether currently drawing
-let drawing = false;
+// create marker line which is a drawable object
+function createMarkerLine(startX: number, startY: number): Drawable {
+  const points: { x: number; y: number }[] = [{ x: startX, y: startY }]; // array of canvas pts, start with where mouse is
 
-// function to redraw canvas
+  return {
+    // returns object that has drag and display
+    drag(x: number, y: number) {
+      points.push({ x, y });
+    },
+
+    display(ctx: CanvasRenderingContext2D) {
+      if (points.length === 0) return;
+
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (const point of points) {
+        ctx.lineTo(point.x, point.y);
+      }
+      ctx.stroke();
+    },
+  };
+}
+
+// store drawn strokes for undo and and undone strokes redo
+// stores them as drawables instead of arrays now
+let strokesDrawn: Drawable[] = [];
+let redoStack: Drawable[] = [];
+let currentStroke: Drawable | null = null;
+
+// redraw canvas function
 function redrawCanvas() {
-  ctx!.clearRect(0, 0, canvas.width, canvas.height); // clear canvas
-  ctx!.beginPath();
-  for (const stroke of strokesDrawn) {
-    if (stroke.length === 0) continue; // skip empty strokes
-    ctx!.moveTo(stroke[0].x, stroke[0].y);
-    for (const point of stroke) {
-      ctx!.lineTo(point.x, point.y); // draw lines between points
-    }
-    ctx!.stroke();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  for (const drawable of strokesDrawn) {
+    drawable.display(ctx);
   }
 }
 
 //////// handle mouse events
 
-// start drawing state on mousedown
+// start stroke on mousedown
 canvas.addEventListener("mousedown", (e) => {
-  drawing = true;
-  currentStroke = []; // start new stroke
   const point = { x: e.offsetX, y: e.offsetY };
-  currentStroke.push(point); // add start point
-  strokesDrawn.push(currentStroke); // add stroke to array
-  redoStack = []; // clear to separate strokes
-  canvas.dispatchEvent(new Event("drawing-changed")); // trigger redraw
+  currentStroke = createMarkerLine(point.x, point.y);
+  strokesDrawn.push(currentStroke);
+  redoStack = [];
+  canvas.dispatchEvent(new Event("drawing-changed"));
 });
 
-// draw on mousemove if the mouse is pressed
+// create stroke while mousemove
 canvas.addEventListener("mousemove", (e) => {
-  if (!drawing) return;
-  const point = { x: e.offsetX, y: e.offsetY };
-  currentStroke.push(point); // add new point to current stroke
-  canvas.dispatchEvent(new Event("drawing-changed")); // trigger redraw
+  if (!currentStroke) return;
+  currentStroke.drag(e.offsetX, e.offsetY);
+  canvas.dispatchEvent(new Event("drawing-changed"));
 });
 
-// stop drawing on mouseup
+// stop drawing stroke on mouseup
 canvas.addEventListener("mouseup", () => {
-  drawing = false;
+  currentStroke = null;
 });
-// decided i dont like stopping on mouseleave
 
-// listen for the drawing changed event to redraw canvas
+// whenever the drawing changes, redraw the canvas
 canvas.addEventListener("drawing-changed", () => {
   redrawCanvas();
 });
 
-//////// buttons
-
-// make button container
+// Create button container
 const buttonContainer = createElement("div", {
   styles: {
     marginTop: "10px",
@@ -107,23 +118,21 @@ const buttonContainer = createElement("div", {
 });
 app.appendChild(buttonContainer);
 
-// add clear button
+// clear button
 const clearButton = createElement("button", {
   textContent: "Clear",
   styles: {
     marginTop: "10px",
   },
 });
-// clear canvas when button is pressed
 clearButton.addEventListener("click", () => {
-  //clear everything
   strokesDrawn = [];
   redoStack = [];
-  ctx!.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height); // clear canvas
 });
 buttonContainer.appendChild(clearButton);
 
-// add undo button
+// undo button
 const undoButton = createElement("button", {
   textContent: "Undo",
   styles: {
@@ -131,16 +140,15 @@ const undoButton = createElement("button", {
   },
 });
 buttonContainer.appendChild(undoButton);
-// undo most recent stroke
 undoButton.addEventListener("click", () => {
   if (strokesDrawn.length > 0) {
-    const lastStroke = strokesDrawn.pop()!; // remove the last stroke from strokes
-    redoStack.push(lastStroke); // push to the redo stack
-    canvas.dispatchEvent(new Event("drawing-changed")); // trigger redraw
+    const lastStroke = strokesDrawn.pop()!;
+    redoStack.push(lastStroke); // push to redo stack
+    canvas.dispatchEvent(new Event("drawing-changed"));
   }
 });
 
-// add redo button
+// redo button
 const redoButton = createElement("button", {
   textContent: "Redo",
   styles: {
@@ -148,11 +156,10 @@ const redoButton = createElement("button", {
   },
 });
 buttonContainer.appendChild(redoButton);
-// redo most recently undone stroke
 redoButton.addEventListener("click", () => {
   if (redoStack.length > 0) {
-    const redoStroke = redoStack.pop()!; // pop last stroke from redo stack
-    strokesDrawn.push(redoStroke); // add back to strokes drawn array
-    canvas.dispatchEvent(new Event("drawing-changed")); // trigger redraw
+    const redoStroke = redoStack.pop()!;
+    strokesDrawn.push(redoStroke);
+    canvas.dispatchEvent(new Event("drawing-changed"));
   }
 });
