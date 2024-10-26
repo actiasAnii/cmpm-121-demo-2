@@ -262,7 +262,6 @@ customStickerButton.addEventListener("click", () => {
 // control buttons
 const clearButton = createElement("button", {
   textContent: "Clear",
-  styles: { marginTop: "10px" },
 });
 controlContainer.appendChild(clearButton);
 
@@ -274,7 +273,6 @@ clearButton.addEventListener("click", () => {
 
 const undoButton = createElement("button", {
   textContent: "Undo",
-  styles: { marginTop: "10px" },
 });
 controlContainer.appendChild(undoButton);
 
@@ -288,7 +286,6 @@ undoButton.addEventListener("click", () => {
 
 const redoButton = createElement("button", {
   textContent: "Redo",
-  styles: { marginTop: "10px" },
 });
 controlContainer.appendChild(redoButton);
 
@@ -302,7 +299,6 @@ redoButton.addEventListener("click", () => {
 
 const exportButton = createElement("button", {
   textContent: "Export",
-  styles: { marginTop: "10px" },
 });
 controlContainer.appendChild(exportButton);
 
