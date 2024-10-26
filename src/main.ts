@@ -47,6 +47,29 @@ function createElement<K extends keyof HTMLElementTagNameMap>(
   return element;
 }
 
+// helper function to export canvas when prompted
+function exportCanvas() {
+  // new temp canvas element
+  const exportCanvas = document.createElement("canvas");
+  exportCanvas.width = 1024;
+  exportCanvas.height = 1024;
+
+  const exportCtx = exportCanvas.getContext("2d");
+
+  exportCtx?.scale(4, 4); //scale by 4 to get 1024 from 256
+  for (const drawable of strokesDrawn) {
+    drawable.display(exportCtx!);
+  }
+  const dataURL = exportCanvas.toDataURL("image/png");
+
+  // temporary link to trigger download
+  const anchor = document.createElement("a");
+  anchor.href = dataURL;
+  anchor.download = "sketchpad_export.png";
+  anchor.click();
+  anchor.remove();
+}
+
 // helper function to redraw all drawables onto canvas
 function redrawCanvas(
   ctx: CanvasRenderingContext2D,
@@ -144,6 +167,8 @@ function createStickerButtons() {
     button.addEventListener("click", () => {
       currentSticker = sticker;
       currentTool = stickerPreview(sticker);
+      thinButton.classList.remove("selectedTool");
+      thickButton.classList.remove("selectedTool");
     });
 
     stickerContainer.appendChild(button);
@@ -199,6 +224,8 @@ markerContainer.appendChild(thinButton);
 
 thinButton.addEventListener("click", () => {
   currentMarkerStyle = "thin";
+  currentTool = markerPreview();
+  currentSticker = null;
   thinButton.classList.add("selectedTool");
   thickButton.classList.remove("selectedTool");
 });
@@ -208,6 +235,8 @@ markerContainer.appendChild(thickButton);
 
 thickButton.addEventListener("click", () => {
   currentMarkerStyle = "thick";
+  currentTool = markerPreview();
+  currentSticker = null;
   thickButton.classList.add("selectedTool");
   thinButton.classList.remove("selectedTool");
 });
@@ -271,13 +300,23 @@ redoButton.addEventListener("click", () => {
   }
 });
 
+const exportButton = createElement("button", {
+  textContent: "Export",
+  styles: { marginTop: "10px" },
+});
+controlContainer.appendChild(exportButton);
+
+exportButton.addEventListener("click", () => {
+  exportCanvas();
+});
+
 // mouse event listeners
 canvas.addEventListener("mousedown", (e) => {
   if (currentSticker) {
     const newSticker = placeSticker(currentSticker, e.offsetX, e.offsetY);
     strokesDrawn.push(newSticker);
     currentSticker = null;
-    currentTool = null;
+    currentTool = markerPreview();
     canvas.dispatchEvent(new Event("drawing-changed"));
   } else {
     drawing = true;
