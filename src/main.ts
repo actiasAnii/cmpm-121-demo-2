@@ -27,6 +27,10 @@ let drawing = false;
 let previewX: number | null = null;
 let previewY: number | null = null;
 
+// extendable array of stickers
+// deno-lint-ignore prefer-const
+let stickers: string[] = ["❤️", "✨", "🌷"];
+
 // helper function to create DOM elements
 function createElement<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -54,6 +58,7 @@ function redrawCanvas(
   }
 }
 
+// draw things
 function createMarkerLine(startX: number, startY: number): Drawable {
   const points: { x: number; y: number }[] = [{ x: startX, y: startY }];
   const lineWidth = currentMarkerStyle === "thin" ? 1 : 5;
@@ -78,32 +83,7 @@ function createMarkerLine(startX: number, startY: number): Drawable {
   };
 }
 
-function StickerPreview(sticker: string): ToolPreview {
-  return {
-    drawPreview(ctx: CanvasRenderingContext2D, x: number, y: number) {
-      ctx.font = "30px Arial";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.globalAlpha = 0.5;
-      ctx.fillText(sticker, x, y);
-    },
-  };
-}
-
-function markerPreview(): ToolPreview {
-  return {
-    drawPreview(ctx: CanvasRenderingContext2D, x: number, y: number) {
-      const lineWidth = currentMarkerStyle === "thin" ? 1 : 3; // Adjust based on current marker style
-      ctx.lineWidth = lineWidth;
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.5)"; // Semi-transparent preview
-      ctx.beginPath();
-      ctx.arc(x, y, lineWidth * 2, 0, Math.PI * 2); // Draw circle preview
-      ctx.stroke();
-    },
-  };
-}
-
-function PlaceSticker(
+function placeSticker(
   sticker: string,
   startX: number,
   startY: number
@@ -127,7 +107,50 @@ function PlaceSticker(
   };
 }
 
-//// DOM elements
+// preview tools
+function stickerPreview(sticker: string): ToolPreview {
+  return {
+    drawPreview(ctx: CanvasRenderingContext2D, x: number, y: number) {
+      ctx.font = "30px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.globalAlpha = 0.5;
+      ctx.fillText(sticker, x, y);
+    },
+  };
+}
+
+function markerPreview(): ToolPreview {
+  return {
+    drawPreview(ctx: CanvasRenderingContext2D, x: number, y: number) {
+      const lineWidth = currentMarkerStyle === "thin" ? 1 : 3;
+      ctx.lineWidth = lineWidth;
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.5)";
+      ctx.beginPath();
+      ctx.arc(x, y, lineWidth * 2, 0, Math.PI * 2);
+      ctx.stroke();
+    },
+  };
+}
+
+// helper function for making sticker buttons
+function createStickerButtons() {
+  stickers.forEach((sticker) => {
+    const button = createElement("button", {
+      textContent: sticker,
+      styles: { fontSize: "24px" },
+    });
+
+    button.addEventListener("click", () => {
+      currentSticker = sticker;
+      currentTool = stickerPreview(sticker);
+    });
+
+    stickerContainer.appendChild(button);
+  });
+}
+
+// DOM elements
 const title = createElement("h1", { textContent: "My Sketchpad App" });
 app.appendChild(title);
 
@@ -141,13 +164,24 @@ const markerContainer = createElement("div", {
 });
 app.appendChild(markerContainer);
 
+const stickerContainer = createElement("div", {
+  styles: {
+    marginTop: "10px",
+    marginBottom: "10px",
+    display: "flex",
+    justifyContent: "center",
+    gap: "10px",
+  },
+});
+app.appendChild(stickerContainer);
+
 const canvas = createElement("canvas", {});
 canvas.height = 256;
 canvas.width = 256;
 canvas.id = "myCanvas";
 app.appendChild(canvas);
 
-const buttonContainer = createElement("div", {
+const controlContainer = createElement("div", {
   styles: {
     marginTop: "10px",
     display: "flex",
@@ -155,11 +189,10 @@ const buttonContainer = createElement("div", {
     gap: "10px",
   },
 });
-app.appendChild(buttonContainer);
+app.appendChild(controlContainer);
 
 const ctx = canvas.getContext("2d");
 
-//// marker tool buttons
 const thinButton = createElement("button", { textContent: "Thin Marker" });
 thinButton.classList.add("selectedTool");
 markerContainer.appendChild(thinButton);
@@ -178,30 +211,31 @@ thickButton.addEventListener("click", () => {
   thickButton.classList.add("selectedTool");
   thinButton.classList.remove("selectedTool");
 });
+
 currentTool = markerPreview();
+createStickerButtons();
 
-//// sticker buttons
-const stickers = ["❤️", "✨", "🌷"];
-stickers.forEach((sticker) => {
-  const button = createElement("button", {
-    textContent: sticker,
-    styles: { fontSize: "24px" },
-  });
+const customStickerButton = createElement("button", {
+  textContent: "Custom Sticker",
+});
+stickerContainer.appendChild(customStickerButton);
 
-  button.addEventListener("click", () => {
-    currentSticker = sticker;
-    currentTool = StickerPreview(sticker);
-  });
-
-  markerContainer.appendChild(button);
+customStickerButton.addEventListener("click", () => {
+  const newSticker = prompt("Enter a new sticker:", "🎉");
+  if (newSticker) {
+    stickers.push(newSticker);
+    stickerContainer.innerHTML = "";
+    createStickerButtons();
+    stickerContainer.appendChild(customStickerButton);
+  }
 });
 
-//// control buttons
+// control buttons
 const clearButton = createElement("button", {
   textContent: "Clear",
   styles: { marginTop: "10px" },
 });
-buttonContainer.appendChild(clearButton);
+controlContainer.appendChild(clearButton);
 
 clearButton.addEventListener("click", () => {
   strokesDrawn = [];
@@ -213,7 +247,7 @@ const undoButton = createElement("button", {
   textContent: "Undo",
   styles: { marginTop: "10px" },
 });
-buttonContainer.appendChild(undoButton);
+controlContainer.appendChild(undoButton);
 
 undoButton.addEventListener("click", () => {
   if (strokesDrawn.length > 0) {
@@ -227,7 +261,7 @@ const redoButton = createElement("button", {
   textContent: "Redo",
   styles: { marginTop: "10px" },
 });
-buttonContainer.appendChild(redoButton);
+controlContainer.appendChild(redoButton);
 
 redoButton.addEventListener("click", () => {
   if (redoStack.length > 0) {
@@ -237,10 +271,10 @@ redoButton.addEventListener("click", () => {
   }
 });
 
-//// mouse event listeners
+// mouse event listeners
 canvas.addEventListener("mousedown", (e) => {
   if (currentSticker) {
-    const newSticker = PlaceSticker(currentSticker, e.offsetX, e.offsetY);
+    const newSticker = placeSticker(currentSticker, e.offsetX, e.offsetY);
     strokesDrawn.push(newSticker);
     currentSticker = null;
     currentTool = null;
