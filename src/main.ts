@@ -9,6 +9,7 @@ interface Drawable {
   drag(x: number, y: number): void;
   display(ctx: CanvasRenderingContext2D): void;
   lineWidth: number;
+  color: string;
 }
 
 // interface for tool preview behavior
@@ -85,9 +86,11 @@ function redrawCanvas(
 function createMarkerLine(startX: number, startY: number): Drawable {
   const points: { x: number; y: number }[] = [{ x: startX, y: startY }];
   const lineWidth = currentMarkerStyle === "thin" ? 1 : 5;
+  const color = colorPicker.value;
 
   return {
     lineWidth,
+    color,
     drag(x: number, y: number) {
       points.push({ x, y });
     },
@@ -95,6 +98,7 @@ function createMarkerLine(startX: number, startY: number): Drawable {
       if (points.length === 0) return;
       ctx.lineWidth = this.lineWidth;
       ctx.globalAlpha = 1;
+      ctx.strokeStyle = color;
       ctx.beginPath();
       ctx.moveTo(points[0].x, points[0].y);
       for (const point of points) {
@@ -116,6 +120,7 @@ function placeSticker(
 
   return {
     lineWidth: 0,
+    color: "#000000",
     drag(newX: number, newY: number) {
       x = newX;
       y = newY;
@@ -148,7 +153,8 @@ function markerPreview(): ToolPreview {
     drawPreview(ctx: CanvasRenderingContext2D, x: number, y: number) {
       const lineWidth = currentMarkerStyle === "thin" ? 1 : 3;
       ctx.lineWidth = lineWidth;
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.5)";
+      ctx.strokeStyle = colorPicker.value;
+      ctx.globalAlpha = 0.75;
       ctx.beginPath();
       ctx.arc(x, y, lineWidth * 2, 0, Math.PI * 2);
       ctx.stroke();
@@ -218,6 +224,7 @@ app.appendChild(controlContainer);
 
 const ctx = canvas.getContext("2d");
 
+// marker buttons
 const thinButton = createElement("button", { textContent: "Thin Marker" });
 thinButton.classList.add("selectedTool");
 markerContainer.appendChild(thinButton);
@@ -241,7 +248,20 @@ thickButton.addEventListener("click", () => {
   thinButton.classList.remove("selectedTool");
 });
 
+const colorPicker = createElement("input", {
+  styles: {
+    marginTop: "10px",
+    width: "60px",
+    height: "30px",
+  },
+});
+colorPicker.type = "color";
+colorPicker.value = "#000000";
+markerContainer.appendChild(colorPicker);
+
 currentTool = markerPreview();
+
+// sticker buttons
 createStickerButtons();
 
 const customStickerButton = createElement("button", {
