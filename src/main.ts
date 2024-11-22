@@ -28,6 +28,14 @@ let drawing = false;
 let previewX: number | null = null;
 let previewY: number | null = null;
 
+// parameters
+const THICK_MARKER_LINE_WIDTH: number = 5;
+const THIN_MARKER_LINE_WIDTH: number = 1;
+const STICKER_SIZE: number = 30;
+const CANVAS_WIDTH: number = 256;
+const CANVAS_HEIGHT: number = 256;
+const EXPORT_FACTOR: number = 4;
+
 // extendable array of stickers
 // deno-lint-ignore prefer-const
 let stickers: string[] = ["❤️", "✨", "🌷"];
@@ -52,8 +60,8 @@ function createElement<K extends keyof HTMLElementTagNameMap>(
 function exportCanvas() {
   // new temp canvas element
   const exportCanvas = document.createElement("canvas");
-  exportCanvas.width = 1024;
-  exportCanvas.height = 1024;
+  exportCanvas.width = CANVAS_WIDTH * EXPORT_FACTOR;
+  exportCanvas.height = CANVAS_HEIGHT * EXPORT_FACTOR;
 
   const exportCtx = exportCanvas.getContext("2d");
 
@@ -85,7 +93,8 @@ function redrawCanvas(
 // draw things
 function createMarkerLine(startX: number, startY: number): Drawable {
   const points: { x: number; y: number }[] = [{ x: startX, y: startY }];
-  const lineWidth = currentMarkerStyle === "thin" ? 1 : 5;
+  const lineWidth = currentMarkerStyle === 
+    "thin" ? THIN_MARKER_LINE_WIDTH : THICK_MARKER_LINE_WIDTH;
   const color = colorPicker.value;
 
   return {
@@ -126,7 +135,7 @@ function placeSticker(
       y = newY;
     },
     display(ctx: CanvasRenderingContext2D) {
-      ctx.font = "30px Arial";
+      ctx.font = `${STICKER_SIZE}px Arial`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.globalAlpha = 1;
@@ -139,7 +148,7 @@ function placeSticker(
 function stickerPreview(sticker: string): ToolPreview {
   return {
     drawPreview(ctx: CanvasRenderingContext2D, x: number, y: number) {
-      ctx.font = "30px Arial";
+      ctx.font = `${STICKER_SIZE}px Arial`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.globalAlpha = 0.5;
@@ -207,8 +216,8 @@ const stickerContainer = createElement("div", {
 app.appendChild(stickerContainer);
 
 const canvas = createElement("canvas", {});
-canvas.height = 256;
-canvas.width = 256;
+canvas.height = CANVAS_HEIGHT;
+canvas.width = CANVAS_WIDTH;
 canvas.id = "myCanvas";
 app.appendChild(canvas);
 
