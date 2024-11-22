@@ -4,6 +4,8 @@ const APP_NAME = "Sketchpad Demo!";
 const app = document.querySelector<HTMLDivElement>("#app")!;
 document.title = APP_NAME;
 
+app.innerHTML = "CMPM 121 Demo 2"; // changed labels/titles
+
 // interface for drawable things
 interface Drawable {
   drag(x: number, y: number): void;
@@ -191,7 +193,7 @@ function createStickerButtons() {
 }
 
 // DOM elements
-const title = createElement("h1", { textContent: "My Sketchpad App" });
+const title = createElement("h1", { textContent: "Your Sketchpad" });
 app.appendChild(title);
 
 const markerContainer = createElement("div", {
@@ -378,3 +380,36 @@ canvas.addEventListener("mouseup", () => {
 canvas.addEventListener("drawing-changed", () => {
   redrawCanvas(ctx!, canvas);
 });
+
+// Added instructions panel
+const instructions = createElement("div", {
+  styles: {
+    marginTop: "15px",
+    padding: "10px",
+    maxWidth: "600px",
+    backgroundColor: "#1a1a1a",
+    border: "3px solid #ffffff",
+    borderRadius: "10px",
+    fontSize: "14px",
+    lineHeight: "1.5",
+    textAlign: "center",
+    whiteSpace: "pre-wrap",
+    boxSizing: "border-box",
+    marginLeft: "auto",
+    marginRight: "auto",
+  },
+  textContent: `
+🎨 Welcome to this Sketchpad Demo! 🎨\n
+- Use the "Thin Marker" or "Thick Marker" buttons to start drawing
+- Pick a color with the color picker tool
+- Add stickers by selecting one from below the brushes
+- Or create your own with the "Custom Sticker" button
+- Use the Undo/Redo buttons to manage your strokes
+- Export your drawing as a PNG file with the Export button
+- Clear to start over! \n
+🌷 Have fun sketching! 🌷
+  `,
+});
+
+app.append(instructions);
+
